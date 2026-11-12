@@ -1,0 +1,12 @@
+numpy
+pandas
+matplotlib
+scikit-learn
+scikit-image
+# OpenCV 5 moved the Haar face detector out of the main package
+opencv-python-headless<5
+librosa
+soundfile
+Pillow
+# Phone recordings in .aac / .m4a also need the ffmpeg program on the PATH
+# (preinstalled on Google Colab).
