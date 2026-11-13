@@ -12,8 +12,6 @@ Run from the repository root to regenerate the feature file:
 from __future__ import annotations
 
 import argparse
-import shutil
-import subprocess
 from pathlib import Path
 
 import librosa
@@ -25,7 +23,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIO_DIR = REPO_ROOT / "data" / "audio"
 OUTPUT_CSV = REPO_ROOT / "datasets" / "audio_features.csv"
 
-AUDIO_EXTENSIONS = {".wav", ".flac", ".ogg", ".mp3", ".m4a", ".aac", ".webm"}
+# Formats soundfile reads without any external program. Phone recordings
+# (.m4a, .aac, .mp3) must be converted to WAV before they are added.
+AUDIO_EXTENSIONS = {".wav", ".flac", ".ogg"}
+CONVERT_FIRST = {".m4a", ".aac", ".mp3", ".webm", ".opus", ".amr", ".3gp"}
 SAMPLE_RATE = 16_000     # plenty for speech, and the same for every device
 TRIM_TOP_DB = 30         # anything 30 dB below the loudest part counts as silence
 MAX_WORD_GAP_S = 0.4     # pauses shorter than this are gaps between words
@@ -45,6 +46,8 @@ def find_clips(audio_dir: Path = AUDIO_DIR) -> pd.DataFrame:
     """
     rows = []
     for path in sorted(audio_dir.glob("*/*")):
+        if path.suffix.lower() in CONVERT_FIRST:
+            raise ValueError(f"{path} is not a WAV file. Convert it to WAV (mono, 44.1 kHz) first.")
         if path.suffix.lower() not in AUDIO_EXTENSIONS:
             continue
         member = path.parent.name
@@ -56,26 +59,16 @@ def find_clips(audio_dir: Path = AUDIO_DIR) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _decode_with_ffmpeg(path: Path, sr: int) -> np.ndarray:
-    if shutil.which("ffmpeg") is None:
-        raise RuntimeError(f"ffmpeg is needed to read {path.suffix} files such as {path}")
-    cmd = ["ffmpeg", "-v", "error", "-i", str(path),
-           "-f", "f32le", "-ac", "1", "-ar", str(sr), "-"]
-    raw = subprocess.run(cmd, check=True, capture_output=True).stdout
-    return np.frombuffer(raw, dtype=np.float32).copy()
-
-
 def load_audio(path: Path | str, sr: int = SAMPLE_RATE) -> np.ndarray:
-    """Read any clip as mono float32 at ``sr`` Hz.
+    """Read a WAV (or FLAC/OGG) clip as mono float32 at ``sr`` Hz.
 
-    WAV, FLAC and OGG go through soundfile; phone formats such as AAC and M4A
-    are decoded with ffmpeg (preinstalled on Colab).
+    Stereo is averaged to mono and the clip is resampled, so recordings from
+    different phones end up in the same format.
     """
     path = Path(path)
-    try:
-        y, file_sr = sf.read(path, dtype="float32", always_2d=True)
-    except (sf.LibsndfileError, RuntimeError):
-        return _decode_with_ffmpeg(path, sr)
+    if path.suffix.lower() not in AUDIO_EXTENSIONS:
+        raise ValueError(f"{path.name}: unsupported format. Convert it to WAV first.")
+    y, file_sr = sf.read(path, dtype="float32", always_2d=True)
     y = y.mean(axis=1)
     if file_sr != sr:
         y = librosa.resample(y, orig_sr=file_sr, target_sr=sr)
