@@ -33,18 +33,26 @@ REQUIREMENTS = {
 }
 
 
-def _usable(module: str) -> bool:
-    if importlib.util.find_spec(module) is None:
-        return False
-    if module == "cv2":  # the face detector files must ship with OpenCV
-        try:
-            import cv2
-            from pathlib import Path
+OPENCV_PACKAGES = ["opencv-python", "opencv-python-headless", "opencv-contrib-python",
+                   "opencv-contrib-python-headless"]
 
-            return Path(cv2.data.haarcascades, "haarcascade_frontalface_default.xml").exists()
-        except Exception:  # noqa: BLE001
-            return False
-    return True
+
+def _opencv_usable() -> bool:
+    """True when OpenCV 4 with CascadeClassifier imports cleanly.
+
+    Checked in a separate Python process, so the running notebook never imports
+    a broken or incompatible OpenCV (once imported, a module cannot be swapped
+    without restarting the kernel). OpenCV 5, which Colab now ships, removed
+    CascadeClassifier.
+    """
+    probe = "import cv2, sys; sys.exit(0 if hasattr(cv2, 'CascadeClassifier') else 1)"
+    return subprocess.run([sys.executable, "-c", probe], capture_output=True).returncode == 0
+
+
+def _usable(module: str) -> bool:
+    if module == "cv2":
+        return _opencv_usable()
+    return importlib.util.find_spec(module) is not None
 
 
 def missing_packages() -> list[str]:
@@ -59,11 +67,21 @@ def ensure_packages(quiet: bool = True) -> None:
         print("All required packages are available.")
         return
     print("Installing missing packages:", ", ".join(missing))
+    if REQUIREMENTS["cv2"] in missing:
+        # Remove every OpenCV variant first: two builds in the same cv2 folder
+        # (e.g. Colab's OpenCV 5 plus OpenCV 4) leave a broken mix of files.
+        subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "-q", *OPENCV_PACKAGES],
+                       capture_output=True)
     cmd = [sys.executable, "-m", "pip", "install", *(["-q"] if quiet else []), *missing]
     result = subprocess.run(cmd)
     if result.returncode != 0:  # e.g. a system Python that refuses global installs
         result = subprocess.run(cmd + ["--user"])
     importlib.invalidate_caches()
+    if REQUIREMENTS["cv2"] in missing and "cv2" in sys.modules:
+        raise RuntimeError(
+            "OpenCV was replaced while an older copy was already loaded in this session. "
+            "Restart the kernel (Colab: Runtime > Restart session) and run this cell again."
+        )
     still_missing = missing_packages()
     if still_missing:
         raise ImportError(

@@ -9,6 +9,7 @@ seconds), so the app never fails because of a different environment.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Callable
 
@@ -29,7 +30,9 @@ def load_or_train(path: Path, train: Callable[..., object], verbose: bool = Fals
         reason = "not trained yet"
     else:
         try:
-            model = joblib.load(path)
+            with warnings.catch_warnings():  # a version mismatch is handled below by retraining
+                warnings.simplefilter("ignore")
+                model = joblib.load(path)
             if getattr(model, "sklearn_version", None) == sklearn.__version__:
                 return model
             reason = f"saved with scikit-learn {getattr(model, 'sklearn_version', '?')}, " \

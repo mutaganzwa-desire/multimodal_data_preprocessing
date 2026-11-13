@@ -35,10 +35,20 @@ WORK_SIDE = 800         # photos are shrunk to this longest side before detectio
 ROTATION_SEARCH = (0, -10, 10, -20, 20, -30, 30)
 SEED = 42
 
-_FACE_CASCADE = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-)
-_EYE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
+# The Haar cascade files ship with this repository (src/haarcascades/), so face
+# detection does not depend on which OpenCV build is installed. OpenCV 5 removed
+# CascadeClassifier from its main package; src/environment.py installs OpenCV 4.
+_CASCADE_DIR = Path(__file__).resolve().parent / "haarcascades"
+if not hasattr(cv2, "CascadeClassifier"):
+    raise ImportError(
+        f"OpenCV {cv2.__version__} has no CascadeClassifier (removed in OpenCV 5). Run "
+        "`pip install \"opencv-python-headless>=4.8,<5\"` (or run the notebook's first cell), "
+        "then restart the kernel/runtime."
+    )
+_FACE_CASCADE = cv2.CascadeClassifier(str(_CASCADE_DIR / "haarcascade_frontalface_default.xml"))
+_EYE_CASCADE = cv2.CascadeClassifier(str(_CASCADE_DIR / "haarcascade_eye.xml"))
+if _FACE_CASCADE.empty() or _EYE_CASCADE.empty():
+    raise FileNotFoundError(f"Haar cascade files missing or unreadable in {_CASCADE_DIR}")
 
 
 # ---------------------------------------------------------------- loading ---
