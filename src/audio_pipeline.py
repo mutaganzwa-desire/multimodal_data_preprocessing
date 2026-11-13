@@ -17,18 +17,16 @@ from pathlib import Path
 import librosa
 import numpy as np
 import pandas as pd
-import soundfile as sf
+
+from src import media_io
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIO_DIR = REPO_ROOT / "data" / "audio"
 OUTPUT_CSV = REPO_ROOT / "datasets" / "audio_features.csv"
 
-# Formats soundfile reads without any external program. Phone recordings
-# (.m4a, .aac, .mp3) must be converted to WAV before they are added.
-AUDIO_EXTENSIONS = {".wav", ".flac", ".ogg"}
-CONVERT_FIRST = {".m4a", ".aac", ".mp3", ".webm", ".opus", ".amr", ".3gp"}
 SAMPLE_RATE = 16_000     # plenty for speech, and the same for every device
 TRIM_TOP_DB = 30         # anything 30 dB below the loudest part counts as silence
+NOISE_MARGIN_DB = 12     # ...and so does anything less than 12 dB above the room's noise floor
 MAX_WORD_GAP_S = 0.4     # pauses shorter than this are gaps between words
 PEAK_LEVEL = 0.95
 N_MFCC = 13
@@ -42,48 +40,54 @@ def find_clips(audio_dir: Path = AUDIO_DIR) -> pd.DataFrame:
     """List every voice clip as (member, phrase, take, path).
 
     Clips live in ``data/audio/<member>/<member>_<phrase>_<take>.<ext>``. The
-    folder name is the speaker label.
+    folder name is the speaker label. Any audio format works (WAV, M4A, AAC,
+    MP3, OGG, OPUS, FLAC, WEBM, ...), even with a wrong extension, because
+    ``media_io.load_audio`` decodes by content.
     """
+    media_io.report_loose_files(audio_dir, "audio")
     rows = []
     for path in sorted(audio_dir.glob("*/*")):
-        if path.suffix.lower() in CONVERT_FIRST:
-            raise ValueError(f"{path} is not a WAV file. Convert it to WAV (mono, 44.1 kHz) first.")
-        if path.suffix.lower() not in AUDIO_EXTENSIONS:
+        if not media_io.is_media_file(path, "audio"):
             continue
-        member = path.parent.name
-        name = path.stem.removeprefix(f"{member}_")
-        phrase, _, take = name.rpartition("_")
-        if not take.isdigit():
-            phrase, take = name, "1"
-        rows.append({"member": member, "phrase": phrase, "take": int(take), "path": path})
-    return pd.DataFrame(rows)
+        member = media_io.slug(path.parent.name)
+        phrase, take = media_io.phrase_and_take(path.stem, member)
+        rows.append({"member": member, "phrase": phrase, "take": take, "path": path})
+    return media_io.drop_duplicate_files(pd.DataFrame(rows, columns=["member", "phrase", "take", "path"]), "audio")
 
 
 def load_audio(path: Path | str, sr: int = SAMPLE_RATE) -> np.ndarray:
-    """Read a WAV (or FLAC/OGG) clip as mono float32 at ``sr`` Hz.
+    """Read a clip of any format as mono float32 at ``sr`` Hz.
 
     Stereo is averaged to mono and the clip is resampled, so recordings from
     different phones end up in the same format.
     """
-    path = Path(path)
-    if path.suffix.lower() not in AUDIO_EXTENSIONS:
-        raise ValueError(f"{path.name}: unsupported format. Convert it to WAV first.")
-    y, file_sr = sf.read(path, dtype="float32", always_2d=True)
-    y = y.mean(axis=1)
-    if file_sr != sr:
-        y = librosa.resample(y, orig_sr=file_sr, target_sr=sr)
-    return y
+    return media_io.load_audio(path, sr)
+
+
+def silence_threshold_db(y: np.ndarray) -> float:
+    """How far below the peak (in dB) a frame may be and still count as speech.
+
+    Normally 30 dB. In a recording with a loud, steady background (a fan, a hum,
+    a noisy phone microphone) the background itself can be within 30 dB of the
+    peak, so the threshold is tightened to 12 dB above the noise floor, which is
+    estimated as the quietest 10% of frames.
+    """
+    rms = librosa.feature.rms(y=y)[0]
+    db = librosa.amplitude_to_db(rms, ref=np.max(rms) if np.max(rms) > 0 else 1.0)
+    noise_floor = float(np.percentile(db, 10))
+    return float(min(TRIM_TOP_DB, -(noise_floor + NOISE_MARGIN_DB)))
 
 
 def speech_interval(y: np.ndarray, sr: int = SAMPLE_RATE) -> tuple[int, int]:
     """Return (start, end) sample indices of the spoken phrase.
 
-    Sound regions are found with ``librosa.effects.split``. Regions separated by
-    a short pause (the gap between two words) are joined, and the joined region
-    with the most energy is kept. A plain trim would instead keep everything up
-    to a faint click a second after the phrase.
+    Sound regions are found with ``librosa.effects.split``, using a threshold that
+    adapts to the recording's background noise (``silence_threshold_db``).
+    Regions separated by a short pause (the gap between two words) are joined,
+    and the joined region with the most energy is kept. A plain trim would
+    instead keep everything up to a faint click a second after the phrase.
     """
-    intervals = librosa.effects.split(y, top_db=TRIM_TOP_DB)
+    intervals = librosa.effects.split(y, top_db=silence_threshold_db(y))
     if len(intervals) == 0:
         return 0, len(y)
     max_gap = int(MAX_WORD_GAP_S * sr)

@@ -17,8 +17,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pandas as pd
-from PIL import Image, ImageOps
 from skimage.feature import hog, local_binary_pattern
+
+from src import media_io
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 IMAGE_DIR = REPO_ROOT / "data" / "images"
@@ -45,23 +46,26 @@ _EYE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xm
 def find_images(image_dir: Path = IMAGE_DIR) -> pd.DataFrame:
     """List every member photo as (member, expression, path).
 
-    Photos live in ``data/images/<member>/<member>_<expression>.jpg``. The folder
-    name is the identity label; the expression comes from the file name.
+    Photos live in ``data/images/<member>/<member>_<expression>.<ext>``. The
+    folder name is the identity label and the expression comes from the file
+    name (``smile``/``Smiling``/``SMILING`` all count). Any image format works:
+    JPEG, PNG, HEIC, WEBP, BMP, TIFF and more. Files left directly in
+    ``data/images/`` trigger a warning, because their owner is unknown.
     """
+    media_io.report_loose_files(image_dir, "image")
     rows = []
     for path in sorted(image_dir.glob("*/*")):
-        if path.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
+        if not media_io.is_media_file(path, "image"):
             continue
-        member = path.parent.name
-        expression = path.stem.removeprefix(f"{member}_").split("_")[0]
+        member = media_io.slug(path.parent.name)
+        expression = media_io.expression_from_name(path.stem, member)
         rows.append({"member": member, "expression": expression, "path": path})
-    return pd.DataFrame(rows)
+    return media_io.drop_duplicate_files(pd.DataFrame(rows, columns=["member", "expression", "path"]), "image")
 
 
 def load_image(path: Path | str) -> np.ndarray:
-    """Read a photo as an RGB uint8 array, applying the phone's EXIF rotation."""
-    with Image.open(path) as img:
-        return np.asarray(ImageOps.exif_transpose(img).convert("RGB"))
+    """Read a photo of any format as an RGB uint8 array, applying EXIF rotation."""
+    return media_io.load_image(path)
 
 
 def _rotate_full(img: np.ndarray, degrees: float) -> np.ndarray:
