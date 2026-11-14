@@ -1,89 +1,108 @@
-# Multimodal Data Preprocessing (Formative 2)
+# Formative 2 - Multimodal Data Preprocessing
 
-A user identity and product recommendation system. A user is recognised by their **face**, a product recommendation is
-computed for their customer account, and it is only released after their **voice** confirms the transaction.
+**Cohort 2, Team 26:** Alain, Arnold, Desire, Ivan
+
+A user identity and product recommendation system. A user is recognised by their **face**, the product model predicts
+what they are likely to buy, and the prediction is only shown after their **voice** confirms the transaction.
 
 ![System flow](reports/figures/system_flow.png)
 
-## Quick start
+| | |
+|---|---|
+| Report | [Formative2_Multimodal_Processing_Report_Cohort2_Team26.pdf](reports/Formative2_Multimodal_Processing_Report_Cohort2_Team26.pdf) |
+| Demo video | https://youtu.be/Q9iVa4_k5gY |
+| Tracker sheet | [BSE Group Assignments : Task Sheet_ML-Pipeline_Formative 2 - Data Preprocessing_Cohort 2_Team26](https://docs.google.com/spreadsheets/d/1r_ei_06foCK3CT8ogSTeNYmN43004Tzc9u6T04i-z_o/edit?usp=sharing) |
 
-Works the same on Windows, macOS, Linux, Google Colab and Kaggle (Python 3.9 or newer).
+## The assignment
+
+1. Merge two customer datasets (social profiles and transactions) and build a model that predicts the product a
+   customer will buy.
+2. Collect face images (neutral, smiling, surprised) and voice samples ("Yes, approve", "Confirm transaction") from
+   every member, augment them and extract features.
+3. Train a facial recognition model, a voiceprint verification model and a product recommendation model.
+4. Demonstrate the full flow in a command-line app, including unauthorised attempts.
+
+## How we built it
+
+- **Data merge:** cleaned both tables (duplicates, IDs, dates, missing ratings), aggregated the social profiles to one
+  row per customer and left-joined them onto the transactions (150 rows, no rows lost).
+- **Images:** detected and cropped each face, applied 7 augmentations (rotation, flip, grayscale, brightness, noise)
+  and extracted colour histogram, LBP and HOG features (532 per image).
+- **Audio:** trimmed each clip to the spoken phrase, applied 6 augmentations (pitch shift, time stretch, background
+  noise, volume) and extracted MFCC, spectral roll-off, energy and other features (50 per clip).
+- **Models:** Logistic Regression, Random Forest and XGBoost were compared for each task; Logistic Regression was
+  selected for all three. Face and voice are only accepted when the model is confident **and** the sample is similar
+  to that member's enrolled samples, which rejects strangers.
+
+| Model | Accuracy | F1 | Log loss |
+|---|---|---|---|
+| Facial recognition | 0.917 | 0.914 | 0.177 |
+| Voiceprint verification | 0.724 | 0.629 | 1.002 |
+| Product recommendation | 0.243 | 0.224 | 1.698 |
+
+## Repository contents
+
+### Datasets – [`datasets/`](datasets)
+
+| File | Description |
+|---|---|
+| [`merged_customer_recommendation_dataset.csv`](datasets/merged_customer_recommendation_dataset.csv) | Merged dataset with engineered features (150 rows × 21 columns) |
+| [`image_features.csv`](datasets/image_features.csv) | Image features: 4 members × 3 expressions × 8 versions (96 rows) |
+| [`audio_features.csv`](datasets/audio_features.csv) | Audio features: 14 recordings × 7 versions (98 rows) |
+| `customer_social_profiles - customer_social_profiles.csv` | Raw social profiles |
+| `customer_transactions - customer_transactions.csv` | Raw transactions |
+
+### Python scripts – [`src/`](src) and [`app.py`](app.py)
+
+| File | Purpose |
+|---|---|
+| [`app.py`](app.py) | Command-line app: face check → product prediction → voice check |
+| [`src/face_model.py`](src/face_model.py) | Facial recognition model |
+| [`src/voice_model.py`](src/voice_model.py) | Voiceprint verification model |
+| [`src/product_model.py`](src/product_model.py) | Product recommendation model |
+| [`src/verification.py`](src/verification.py) | Shared accept/reject logic for face and voice |
+| [`src/image_pipeline.py`](src/image_pipeline.py) | Face detection, augmentation and image features |
+| [`src/audio_pipeline.py`](src/audio_pipeline.py) | Speech trimming, augmentation and audio features |
+| [`src/media_io.py`](src/media_io.py) | Reads any image or audio format |
+| [`src/model_store.py`](src/model_store.py), [`src/environment.py`](src/environment.py) | Model saving and package setup |
+
+Trained models are in [`models/`](models).
+
+### Jupyter notebooks – [`notebooks/`](notebooks)
+
+| Notebook | Content |
+|---|---|
+| [`Formative_2_Tabular_Data_Preprocessing.ipynb`](notebooks/Formative_2_Tabular_Data_Preprocessing.ipynb) | EDA, cleaning, merge and validation |
+| [`Formative_2_Image_Processing.ipynb`](notebooks/Formative_2_Image_Processing.ipynb) | Face images, augmentation, image features |
+| [`Formative_2_Audio_Processing.ipynb`](notebooks/Formative_2_Audio_Processing.ipynb) | Waveforms, spectrograms, augmentation, audio features |
+| [`Formative_2_Models_and_System_Demo.ipynb`](notebooks/Formative_2_Models_and_System_Demo.ipynb) | The three models, evaluation and system simulation |
+
+### Tracker sheet
+
+[`BSE Group Assignments : Task Sheet_ML-Pipeline_Formative 2 - Data Preprocessing_Cohort 2_Team26`](https://docs.google.com/spreadsheets/d/1r_ei_06foCK3CT8ogSTeNYmN43004Tzc9u6T04i-z_o/edit?usp=sharing): team roles, task
+allocation and meeting log.
+
+### Other folders
+
+| Folder | Content |
+|---|---|
+| [`data/images/`](data/images), [`data/audio/`](data/audio) | Each member's photos and voice recordings |
+| [`data/unauthorized/`](data/unauthorized) | Photo and voice of a non-member, used for the unauthorised attempts |
+| [`reports/`](reports) | Report and system flow diagram |
+| [`video/`](video) | Demo video |
+
+## How to run
 
 ```bash
 git clone https://github.com/mutaganzwa-desire/multimodal_data_preprocessing.git
 cd multimodal_data_preprocessing
 pip install -r requirements.txt
-python app.py --demo
 ```
-
-No system programs (such as FFmpeg) are needed: every dependency installs with `pip`. The notebooks and the app also
-install any missing package themselves, so opening a notebook directly also works. On Colab or Kaggle, open a notebook
-from GitHub and run it: the first cell clones the repository.
-
-## The command-line app
 
 ```bash
-python app.py --demo                            # authorised transaction + unauthorised attempts
-python app.py                                   # interactive: asks for a photo, then a voice clip
-python app.py --face PHOTO --voice CLIP         # one transaction (exit code 0 = granted, 1 = denied)
-python app.py --face PHOTO --voice CLIP --customer-id 101 --date 2026-12-01
-python app.py --retrain                         # rebuild the three models first
+python app.py --demo                              # authorised transaction + unauthorised attempts
+python app.py                                     # interactive: enter a photo, then a voice clip
+python app.py --face PHOTO --voice CLIP           # one transaction
 ```
 
-Each member is linked to a customer account in `data/member_accounts.csv`. To test with a real stranger, put their photo
-and voice recording in `data/unauthorized/` (see the README there).
-
-## Notebooks
-
-Run in order (each one also works on its own, because the generated files are committed):
-
-| # | Notebook | Produces |
-|---|---|---|
-| 1 | `Formative_2_Tabular_Data_Preprocessing.ipynb` | EDA, cleaning, merge, `datasets/merged_customer_recommendation_dataset.csv` |
-| 2 | `Formative_2_Image_Processing.ipynb` | face crops, augmentations, `datasets/image_features.csv` |
-| 3 | `Formative_2_Audio_Processing.ipynb` | waveforms, spectrograms, augmentations, `datasets/audio_features.csv` |
-| 4 | `Formative_2_Models_and_System_Demo.ipynb` | the three models, their metrics, and the system simulation |
-
-## Repository layout
-
-```
-app.py                      command-line app (the system simulation)
-src/
-  media_io.py               reads any image/audio format; `python -m src.media_io` tidies data/
-  image_pipeline.py         face detection, cropping, augmentation, image features
-  audio_pipeline.py         speech trimming, augmentation, audio features
-  verification.py           shared face/voice training, evaluation and accept/reject logic
-  face_model.py             facial recognition model        (python -m src.face_model)
-  voice_model.py            voiceprint verification model   (python -m src.voice_model)
-  product_model.py          product recommendation model    (python -m src.product_model)
-  model_store.py            saves models; retrains them automatically on another scikit-learn version
-  environment.py            installs missing packages
-data/images/<member>/       3 photos per member: neutral, smiling, surprised
-data/audio/<member>/        "yes approve" and "confirm transaction" recordings
-data/unauthorized/          optional stranger samples for the demo (never used for training)
-datasets/                   raw CSVs, merged dataset, image_features.csv, audio_features.csv
-models/                     trained models (.joblib)
-notebooks/                  the four notebooks above
-reports/                    project report
-```
-
-## Adding or replacing a member's samples
-
-1. Put the files in `data/images/<member>/` and `data/audio/<member>/`, for example `arnold_smiling.heic` or
-   `arnold_yes_approve_2.m4a`. Any common format and naming variant works (`Smile`, `Yes Approve 2`...).
-2. Optionally run `python -m src.media_io` to convert everything to standard JPEG/WAV with standard names
-   (`--dry-run` shows what would change).
-3. Rebuild the features and models:
-
-   ```bash
-   python -m src.image_pipeline
-   python -m src.audio_pipeline
-   python -m src.face_model
-   python -m src.voice_model
-   ```
-
-   or rerun notebooks 2, 3 and 4.
-
-Supported formats: images in JPEG, PNG, HEIC/HEIF, WEBP, AVIF, BMP, TIFF and GIF; audio in WAV, M4A, AAC, MP3, MP4, OGG,
-OPUS, FLAC, WEBM, AMR, 3GP, AIFF and WMA. Files are decoded by content, so a wrong extension does not matter. Photos
-outside a member folder and byte-identical duplicate files are reported with a warning.
+On Google Colab, open any notebook from GitHub and select **Runtime → Run all**.
