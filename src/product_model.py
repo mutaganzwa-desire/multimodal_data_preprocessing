@@ -9,7 +9,7 @@ after the purchase.
 Logistic Regression, Random Forest and XGBoost are compared with a most-frequent
 -class baseline using 5-fold cross-validation repeated 5 times. Folds are grouped
 by ``customer_id`` so a customer's purchases are never split between training
-and testing. The model with the best macro F1 is saved to
+and testing, and are built with NumPy so they are identical on every machine. The model with the best macro F1 is saved to
 ``models/product_model.joblib``.
 
     python -m src.product_model         # train, evaluate and save
@@ -32,7 +32,6 @@ from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, log_loss
-from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from xgboost import XGBClassifier
@@ -78,13 +77,28 @@ def candidate_models() -> dict:
     }
 
 
+def grouped_folds(groups: np.ndarray, seed: int):
+    """Yield (train, test) index arrays, every customer entirely in one fold.
+
+    Customers are shuffled with NumPy's legacy RandomState, whose output never
+    changes between versions, and dealt into folds in turn. Unlike
+    scikit-learn's shuffling splitters, this gives the same folds (and so the
+    same scores) on every machine and scikit-learn version.
+    """
+    customers = np.unique(groups)
+    order = np.random.RandomState(seed).permutation(len(customers))
+    fold_of = dict(zip(customers[order], np.arange(len(customers)) % N_SPLITS))
+    folds = np.array([fold_of[g] for g in groups])
+    for k in range(N_SPLITS):
+        yield np.flatnonzero(folds != k), np.flatnonzero(folds == k)
+
+
 def evaluate(model, X: pd.DataFrame, y: np.ndarray, groups: np.ndarray, n_classes: int):
     """Repeated grouped CV: mean/std of accuracy, macro F1, log loss; first-repeat OOF probs."""
     scores, first_oof = [], None
     for repeat in range(N_REPEATS):
         probs = np.zeros((len(X), n_classes))
-        cv = StratifiedGroupKFold(n_splits=N_SPLITS, shuffle=True, random_state=SEED + repeat)
-        for train, test in cv.split(X, y, groups):
+        for train, test in grouped_folds(groups, SEED + repeat):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 fitted = clone(model).fit(X.iloc[train], y[train])

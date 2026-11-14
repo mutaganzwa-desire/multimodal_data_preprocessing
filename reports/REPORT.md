@@ -5,13 +5,11 @@
 **Simulation video:** _add link_
 **Team:** Alain, Arnold, Desire, Ivan
 
-> Status: Ivan has one recording per phrase (his `_2` files were copies of his `_1` files and were deleted). If he
-> records second takes, rerun notebooks 3 and 4 (or `python -m src.audio_pipeline` then `python -m src.voice_model`) and update the
-> voice figures in sections 4, 6 and 7.
-
 ---
 
 ## 1. System overview
+
+![System flow](figures/system_flow.png)
 
 The system decides whether a person may see a personalised product recommendation:
 
@@ -157,14 +155,15 @@ effective improvement.
 
 Inputs are the customer's aggregated social profile and the visit date (purchase amount and rating excluded, as they
 occur after the purchase). Evaluation is 5-fold cross-validation repeated 5 times, **grouped by customer**, against a
-most-frequent-class baseline. The model with the best macro F1 is kept.
+most-frequent-class baseline. Folds are built with NumPy, so the scores are the same on every machine. The model
+with the best macro F1 is kept.
 
 | Model | Accuracy | Macro F1 | Log loss |
 |---|---|---|---|
-| Baseline (most frequent) | 0.224 | 0.111 | 1.602 |
-| **Logistic Regression (selected)** | **0.259** | **0.230** | 1.672 |
-| Random Forest | 0.216 | 0.175 | 1.722 |
-| XGBoost | 0.208 | 0.190 | 1.844 |
+| Baseline (most frequent) | 0.163 | 0.088 | 1.642 |
+| **Logistic Regression (selected)** | **0.243** | **0.224** | 1.698 |
+| Random Forest | 0.219 | 0.188 | 1.750 |
+| XGBoost | 0.195 | 0.179 | 1.890 |
 
 The features describe how engaged a customer is, not what they like, and the EDA showed nearly identical purchase
 interest across categories. With 150 transactions from 75 customers, the category is close to unpredictable: Logistic
@@ -182,12 +181,12 @@ result is released. The voice is verified against the identity established by th
 |---|---|---|---|
 | 1 | Alain: own face, own voice | **Granted** | face 1.00 / 0.93, voice 0.96 / 0.94; recommendation shown |
 | 2 | Arnold holds Alain's photo, confirms with his own voice | **Denied at step 3** | voice probability for Alain 0.014 |
-| 3 | Stranger's face (system enrolled without Ivan) | **Denied at step 1** | similarity to the nearest member 0.17 < 0.36 |
-| 4 | Alain's face, stranger's voice (enrolled without Ivan) | **Denied at step 3** | voice probability for Alain 0.11 < 0.50 |
+| 3 | Ketia (not in the team) tries to log in | **Denied at step 1** | best match Desire at 0.518 < 0.80 |
+| 4 | Alain's face, Ketia's voice approves | **Denied at step 3** | voice probability for Alain 0.368 < 0.50 |
 
-When every member in turn plays the stranger, all 12 stranger photos are rejected, and 34 of 42 stranger voice
-attempts (81%), in line with the held-out rates above.
-A real outsider's photo and recording can be placed in `data/unauthorized/`, and the demo then uses them. The app also
+Scenarios 3 and 4 use a real outsider's photo and voice (`data/unauthorized/`, never used for training). In addition,
+when every member in turn plays the stranger, all 12 stranger photos and 34 of 42 stranger voice attempts (81%) are
+rejected, in line with the held-out rates above. The app also
 runs interactively (`python app.py`) or for one transaction
 (`python app.py --face photo.heic --voice clip.m4a`), and denies photos where no face is detected.
 
@@ -199,16 +198,15 @@ runs interactively (`python app.py`) or for one transaction
 - **Device bias:** each member used a different phone, so part of the voice signal may be the device. The stranger
   recording should be made on a team phone.
 - **Weak product signal:** the tabular features barely predict the category; the model is a ranked suggestion.
-- **Stranger thresholds** are estimated by leaving one member out, since no real outsiders were collected yet.
+- **Stranger testing** relies mostly on leaving one member out; only one real outsider was recorded.
 
 ## 9. Team contributions
 
-| Member | Contributions (from the repository history; to be confirmed by the team) |
+| Member | Contributions |
 |---|---|
-| Desire | Project setup and raw datasets; tabular EDA, cleaning notes, merge validation and processed dataset; own photos and recordings |
-| Alain | Image and audio preprocessing pipelines and feature files; image and audio notebooks; tabular notebook portability and cleaning; README; own photos and recordings |
-| Ivan | Own photos and recordings |
-| Arnold | Own photos and recordings |
-| _to fill_ | Any-format media loading, notebook portability, face/voice/product models, command-line app, models notebook, report |
+| Desire | Project setup and raw datasets; tabular EDA, cleaning, merge validation and processed dataset; organisation of the members' files; reran the tabular and image notebooks and regenerated their datasets; project report and README; own photos and recordings |
+| Alain | Image and audio preprocessing pipelines and feature files; image and audio notebooks; any-format media loading (`src/media_io.py`); portable setup, model saving and the shared face/voice verification logic; own photos and recordings |
+| Arnold | Standardised file names and member-account links; unauthorised-samples folder; facial recognition and product recommendation models; first upload of the models notebook; own photos and recordings |
+| Ivan | Converted his recordings to WAV and regenerated the audio features; voiceprint verification model; command-line app (`app.py`); models and system demo notebook; own photos and recordings |
 
 See also the contribution sheet.

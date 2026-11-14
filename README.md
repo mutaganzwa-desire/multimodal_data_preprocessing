@@ -3,16 +3,7 @@
 A user identity and product recommendation system. A user is recognised by their **face**, a product recommendation is
 computed for their customer account, and it is only released after their **voice** confirms the transaction.
 
-```
-face photo --> face recognition --(unknown)--> ACCESS DENIED
-                 | member M
-                 v
-         product model predicts for M (held back)
-                 |
-voice clip --> voiceprint verification (is it M?) --(no)--> ACCESS DENIED
-                 v
-         recommendation displayed
-```
+![System flow](reports/figures/system_flow.png)
 
 ## Quick start
 
